@@ -54,7 +54,7 @@ export default function RegisterCargo() {
             <div>
               <p className="text-sm text-gray-400">QR Code</p>
               {result.qr_code_url && (
-                <a href={`http://localhost:5000${result.qr_code_url}`} target="_blank" className="text-primary-400 hover:underline text-sm">
+                <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${result.qr_code_url}`} target="_blank" className="text-primary-400 hover:underline text-sm">
                   📥 Download QR Code
                 </a>
               )}

@@ -24,7 +24,10 @@ app.use('/api/offices', require('./routes/offices'));
 app.use('/api/cargo', require('./routes/cargo'));
 app.use('/api/checkpoint', require('./routes/checkpoint'));
 app.use('/api/receiver', require('./routes/receiver'));
+app.use('/api/office-verifications', require('./routes/officeVerification'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/workflow', require('./routes/workflow'));
 
 // Health check
 app.get('/api/health', (req, res) => {

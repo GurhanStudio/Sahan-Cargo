@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { User, Office } = require('../models');
+const { User, Office, Cargo } = require('../models');
 const { createAuditLog } = require('../middleware/auditLogger');
 
 // GET /api/users
@@ -34,33 +34,16 @@ exports.getUser = async (req, res) => {
 exports.createUser = async (req, res) => {
   try {
     const { name, email, phone, password, role, office_id } = req.body;
-
     if (!name || !email || !password || !role) {
       return res.status(400).json({ message: 'Name, email, password, and role are required.' });
     }
-
     const existing = await User.findOne({ where: { email } });
-    if (existing) {
-      return res.status(409).json({ message: 'Email already exists.' });
-    }
+    if (existing) return res.status(409).json({ message: 'Email already exists.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, phone, password: hashedPassword, role, office_id: office_id || null });
 
-    const user = await User.create({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      role,
-      office_id: office_id || null
-    });
-
-    await createAuditLog({
-      userId: req.user.id,
-      actionType: 'USER_CREATED',
-      actionDescription: `Admin created user: ${name} (${role})`,
-      ipAddress: req.ip
-    });
+    await createAuditLog({ userId: req.user.id, actionType: 'USER_CREATED', actionDescription: `Admin created user: ${name} (${role})`, ipAddress: req.ip });
 
     const result = user.toJSON();
     delete result.password;
@@ -78,7 +61,6 @@ exports.updateUser = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const { name, email, phone, role, office_id, is_active, password } = req.body;
-
     if (email && email !== user.email) {
       const existing = await User.findOne({ where: { email } });
       if (existing) return res.status(409).json({ message: 'Email already exists.' });
@@ -94,13 +76,7 @@ exports.updateUser = async (req, res) => {
     if (password) updateData.password = await bcrypt.hash(password, 10);
 
     await user.update(updateData);
-
-    await createAuditLog({
-      userId: req.user.id,
-      actionType: 'USER_UPDATED',
-      actionDescription: `Admin updated user ID ${user.id}: ${user.name}`,
-      ipAddress: req.ip
-    });
+    await createAuditLog({ userId: req.user.id, actionType: 'USER_UPDATED', actionDescription: `Admin updated user: ${user.name}`, ipAddress: req.ip });
 
     const result = user.toJSON();
     delete result.password;
@@ -110,23 +86,61 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// DELETE /api/users/:id
+// PATCH /api/users/:id/activate  — Re-activate a deactivated user
+exports.activateUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (user.is_active) return res.status(400).json({ message: 'User is already active.' });
+
+    await user.update({ is_active: true });
+    await createAuditLog({ userId: req.user.id, actionType: 'USER_UPDATED', actionDescription: `Admin activated user: ${user.name}`, ipAddress: req.ip });
+
+    res.json({ message: 'User activated successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PATCH /api/users/:id/deactivate  — Deactivate (soft disable) a user
+exports.deactivateUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!user.is_active) return res.status(400).json({ message: 'User is already inactive.' });
+
+    await user.update({ is_active: false });
+    await createAuditLog({ userId: req.user.id, actionType: 'USER_DEACTIVATED', actionDescription: `Admin deactivated user: ${user.name}`, ipAddress: req.ip });
+
+    res.json({ message: 'User deactivated successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /api/users/:id  — Hard delete a user
 exports.deleteUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    await user.update({ is_active: false });
+    // Safety: prevent deleting yourself
+    if (user.id === req.user.id) {
+      return res.status(400).json({ message: 'You cannot delete your own account.' });
+    }
 
-    await createAuditLog({
-      userId: req.user.id,
-      actionType: 'USER_DEACTIVATED',
-      actionDescription: `Admin deactivated user: ${user.name}`,
-      ipAddress: req.ip
-    });
+    const userName = user.name;
+    await user.destroy();
 
-    res.json({ message: 'User deactivated successfully.' });
+    await createAuditLog({ userId: req.user.id, actionType: 'USER_UPDATED', actionDescription: `Admin permanently deleted user: ${userName}`, ipAddress: req.ip });
+
+    res.json({ message: `User "${userName}" permanently deleted.` });
   } catch (error) {
+    // Foreign key constraint error (has related cargo/checkpoints)
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(409).json({ message: 'Cannot delete user — they have linked cargo or checkpoint records. Deactivate instead.' });
+    }
+    console.error('Delete user error:', error);
     res.status(500).json({ message: 'Server error.' });
   }
 };

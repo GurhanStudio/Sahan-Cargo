@@ -13,8 +13,9 @@ function dateFilter(from, to) {
   return undefined;
 }
 
-// Helper: log report download
+// Helper: log report download (only for actual file downloads, not JSON preview)
 async function logDownload(userId, reportType, format, filters, ip) {
+  if (format === 'JSON') return; // skip logging for browser JSON preview
   await ReportDownloadLog.create({
     admin_user_id: userId,
     report_type: reportType,
@@ -331,3 +332,101 @@ exports.getAuditLogs = async (req, res) => {
     res.status(500).json({ message: 'Server error.' });
   }
 };
+
+// ═══════════════════════════════════════
+// 6. Delayed Cargo Report
+// ═══════════════════════════════════════
+exports.delayedReport = async (req, res) => {
+  try {
+    const { format = 'json' } = req.query;
+    const DELAYS = require('../config/delayThresholds');
+    const now = new Date();
+    const hoursAgo = (h) => new Date(now - h * 60 * 60 * 1000);
+
+    const data = await Cargo.findAll({
+      where: {
+        current_status: { [Op.notIn]: ['DELIVERED', 'REGISTERED'] },
+        [Op.or]: [
+          { current_status: 'RECEIVED_AT_ORIGIN_AIRPORT', updated_at: { [Op.lt]: hoursAgo(DELAYS.AT_ORIGIN_AIRPORT) } },
+          { current_status: 'LOADED_ON_AIRCRAFT', updated_at: { [Op.lt]: hoursAgo(DELAYS.LOADED_ON_AIRCRAFT) } },
+          { current_status: 'ARRIVED_AT_DESTINATION_AIRPORT', updated_at: { [Op.lt]: hoursAgo(DELAYS.AT_DESTINATION_AIRPORT) } },
+          { current_status: 'RECEIVED_AT_DESTINATION_OFFICE', updated_at: { [Op.lt]: hoursAgo(DELAYS.AT_DESTINATION_OFFICE) } },
+        ]
+      },
+      include: [
+        { model: Office, as: 'originOffice', attributes: ['office_name'] },
+        { model: Office, as: 'destinationOffice', attributes: ['office_name'] }
+      ],
+      order: [['updated_at', 'ASC']],
+      raw: true, nest: true
+    });
+
+    const rows = data.map(d => ({
+      'Tracking Number': d.tracking_number,
+      'Current Status': d.current_status,
+      'Sender': d.sender_name,
+      'Receiver': d.receiver_name,
+      'Origin': d.originOffice?.office_name,
+      'Destination': d.destinationOffice?.office_name,
+      'Priority': d.priority,
+      'Last Updated': d.updated_at
+    }));
+
+    await logDownload(req.user.id, 'delayed', format.toUpperCase(), {}, req.ip);
+    return sendReport(res, rows, 'Delayed_Cargo_Report', format);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+
+// ═══════════════════════════════════════
+// 8. Performance / Metrics Report
+// ═══════════════════════════════════════
+exports.performanceReport = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const dateRange = dateFilter(from, to);
+
+    const checkpointWhere = {};
+    if (dateRange) checkpointWhere.checked_at = dateRange;
+
+    // Staff activity counts
+    const staffData = await CargoCheckpoint.findAll({
+      where: checkpointWhere,
+      include: [
+        { model: User, as: 'checkedBy', attributes: ['id', 'name', 'role'] }
+      ],
+      raw: true, nest: true
+    });
+
+    const staffMap = {};
+    staffData.forEach(cp => {
+      const u = cp.checkedBy;
+      if (!u?.id) return;
+      if (!staffMap[u.id]) staffMap[u.id] = { name: u.name, role: u.role, total: 0, disputes: 0 };
+      staffMap[u.id].total++;
+      if (['DAMAGED', 'DISPUTE'].includes(cp.condition_status)) staffMap[u.id].disputes++;
+    });
+
+    // Office cargo counts
+    const cargoWhere = {};
+    if (dateRange) cargoWhere.created_at = dateRange;
+    const offices = await Office.findAll({ attributes: ['id', 'office_name', 'office_type'] });
+    const officeStats = await Promise.all(offices.map(async (o) => {
+      const total = await Cargo.count({ where: { ...cargoWhere, [require('sequelize').Op.or]: [{ origin_office_id: o.id }, { destination_office_id: o.id }] } });
+      const delivered = await Cargo.count({ where: { ...cargoWhere, destination_office_id: o.id, current_status: 'DELIVERED' } });
+      return { office: o.office_name, type: o.office_type, total, delivered };
+    }));
+
+    res.json({
+      staff: Object.values(staffMap).sort((a, b) => b.total - a.total),
+      offices: officeStats,
+      generated_at: new Date()
+    });
+  } catch (error) {
+    console.error('Performance report error:', error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+

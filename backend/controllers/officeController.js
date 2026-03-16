@@ -1,4 +1,4 @@
-const { Office } = require('../models');
+const { Office, User } = require('../models');
 const { createAuditLog } = require('../middleware/auditLogger');
 
 // GET /api/offices
@@ -6,7 +6,16 @@ exports.getOffices = async (req, res) => {
   try {
     const { type } = req.query;
     const where = type ? { office_type: type } : {};
-    const offices = await Office.findAll({ where, order: [['created_at', 'DESC']] });
+    const offices = await Office.findAll({
+      where,
+      include: [{
+        model: User,
+        as: 'users',
+        attributes: ['id', 'name', 'role', 'is_active'],
+        required: false
+      }],
+      order: [['office_type', 'ASC'], ['office_name', 'ASC']]
+    });
     res.json(offices);
   } catch (error) {
     res.status(500).json({ message: 'Server error.' });
@@ -16,7 +25,9 @@ exports.getOffices = async (req, res) => {
 // GET /api/offices/:id
 exports.getOffice = async (req, res) => {
   try {
-    const office = await Office.findByPk(req.params.id);
+    const office = await Office.findByPk(req.params.id, {
+      include: [{ model: User, as: 'users', attributes: ['id', 'name', 'role', 'is_active'], required: false }]
+    });
     if (!office) return res.status(404).json({ message: 'Office not found.' });
     res.json(office);
   } catch (error) {

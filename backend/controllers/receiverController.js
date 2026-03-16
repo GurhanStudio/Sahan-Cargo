@@ -116,20 +116,21 @@ exports.verifyOTP = async (req, res) => {
       checkpoint_name: 'DELIVERED',
       condition_status: 'GOOD',
       note: 'Delivery confirmed by receiver via OTP verification.',
-      checked_by_user_id: cargo.created_by, // Use creator as fallback
+      checked_by_user_id: null, // Receiver-initiated — no staff user
       checked_at: new Date()
     });
 
-    // Update cargo status
+    // Update cargo status to DELIVERED
     await cargo.update({
       current_status: 'DELIVERED',
       delivered_at: new Date()
     });
 
     await createAuditLog({
+      userId: null,
       cargoId: cargo.id,
       actionType: 'DELIVERY_CONFIRMED',
-      actionDescription: `Cargo ${tracking_number} delivered. OTP verified by receiver ${cargo.receiver_phone}.`,
+      actionDescription: `Cargo ${tracking_number} delivered. OTP verified by receiver phone ${cargo.receiver_phone}.`,
       ipAddress: req.ip
     });
 

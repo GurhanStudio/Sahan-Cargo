@@ -14,7 +14,7 @@ exports.registerCargo = async (req, res) => {
 
     // Validation
     if (!sender_name || !sender_phone || !receiver_name || !receiver_phone ||
-        !description || !weight || !origin_office_id || !destination_office_id) {
+      !description || !weight || !origin_office_id || !destination_office_id) {
       return res.status(400).json({ message: 'All required fields must be provided.' });
     }
 
@@ -182,18 +182,29 @@ exports.trackCargo = async (req, res) => {
 // GET /api/cargo/dashboard/stats — Dashboard statistics
 exports.getDashboardStats = async (req, res) => {
   try {
-    const total = await Cargo.count();
-    const delivered = await Cargo.count({ where: { current_status: 'DELIVERED' } });
-    const inTransit = await Cargo.count({
-      where: {
-        current_status: {
-          [Op.notIn]: ['REGISTERED', 'DELIVERED']
-        }
-      }
-    });
-    const highValue = await Cargo.count({ where: { priority: 'HIGH_VALUE' } });
-    const disputes = await CargoCheckpoint.count({ where: { condition_status: 'DISPUTE' } });
-    const damaged = await CargoCheckpoint.count({ where: { condition_status: 'DAMAGED' } });
+    const { User, Office } = require('../models');
+
+    const [total, delivered, inTransit, highValue, disputes, damaged] = await Promise.all([
+      Cargo.count(),
+      Cargo.count({ where: { current_status: 'DELIVERED' } }),
+      Cargo.count({ where: { current_status: { [Op.notIn]: ['REGISTERED', 'DELIVERED'] } } }),
+      Cargo.count({ where: { priority: 'HIGH_VALUE' } }),
+      CargoCheckpoint.count({ where: { condition_status: 'DISPUTE' } }),
+      CargoCheckpoint.count({ where: { condition_status: 'DAMAGED' } })
+    ]);
+
+    // User counts
+    const [totalUsers, activeUsers] = await Promise.all([
+      User.count(),
+      User.count({ where: { is_active: true } })
+    ]);
+
+    // Office counts by type
+    const offices = await Office.findAll({ attributes: ['office_type'], raw: true });
+    const officeCountByType = offices.reduce((acc, o) => {
+      acc[o.office_type] = (acc[o.office_type] || 0) + 1;
+      return acc;
+    }, {});
 
     // Recent cargo (last 10)
     const recentCargo = await Cargo.findAll({
@@ -218,6 +229,8 @@ exports.getDashboardStats = async (req, res) => {
 
     res.json({
       stats: { total, delivered, inTransit, highValue, disputes, damaged },
+      users: { total: totalUsers, active: activeUsers, inactive: totalUsers - activeUsers },
+      offices: { total: offices.length, byType: officeCountByType },
       recentCargo,
       recentDisputes
     });
@@ -226,3 +239,4 @@ exports.getDashboardStats = async (req, res) => {
     res.status(500).json({ message: 'Server error.' });
   }
 };
+

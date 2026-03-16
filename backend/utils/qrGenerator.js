@@ -8,7 +8,7 @@ const fs = require('fs');
  * @param {string} baseUrl - the base URL for receiver confirmation
  * @returns {Promise<string>} - relative path to saved QR image
  */
-async function generateQRCode(trackingNumber, baseUrl = 'http://localhost:5173') {
+async function generateQRCode(trackingNumber, baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173') {
   const uploadsDir = path.join(__dirname, '..', 'uploads', 'qrcodes');
 
   // Ensure directory exists

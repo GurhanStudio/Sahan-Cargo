@@ -13,5 +13,8 @@ router.get('/high-value', reportController.highValueReport);
 router.get('/damaged', reportController.damagedReport);
 router.get('/activity', reportController.activityReport);
 router.get('/audit-logs', reportController.getAuditLogs);
+router.get('/delayed', reportController.delayedReport);
+
+router.get('/performance', reportController.performanceReport);
 
 module.exports = router;

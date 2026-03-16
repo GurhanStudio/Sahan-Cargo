@@ -6,6 +6,8 @@ const CargoCheckpoint = require('./CargoCheckpoint');
 const OtpVerification = require('./OtpVerification');
 const AuditLog = require('./AuditLog');
 const ReportDownloadLog = require('./ReportDownloadLog');
+const OfficeVerification = require('./OfficeVerification');
+const Notification = require('./Notification');
 
 // ── Associations ──
 
@@ -47,6 +49,22 @@ AuditLog.belongsTo(Cargo, { foreignKey: 'cargo_id', as: 'cargo' });
 User.hasMany(ReportDownloadLog, { foreignKey: 'admin_user_id', as: 'reportDownloads' });
 ReportDownloadLog.belongsTo(User, { foreignKey: 'admin_user_id', as: 'admin' });
 
+// Cargo <-> OfficeVerification
+Cargo.hasMany(OfficeVerification, { foreignKey: 'cargo_id', as: 'officeVerifications' });
+OfficeVerification.belongsTo(Cargo, { foreignKey: 'cargo_id', as: 'cargo' });
+
+// Office <-> OfficeVerification
+Office.hasMany(OfficeVerification, { foreignKey: 'office_id', as: 'officeVerifications' });
+OfficeVerification.belongsTo(Office, { foreignKey: 'office_id', as: 'office' });
+
+// User <-> OfficeVerification
+User.hasMany(OfficeVerification, { foreignKey: 'verified_by_user_id', as: 'officeVerifications' });
+OfficeVerification.belongsTo(User, { foreignKey: 'verified_by_user_id', as: 'verifiedBy' });
+
+// Notification associations
+Notification.belongsTo(require('./User'), { foreignKey: 'user_id', as: 'targetUser', constraints: false });
+Notification.belongsTo(require('./Cargo'), { foreignKey: 'cargo_id', as: 'cargo', constraints: false });
+
 module.exports = {
   sequelize,
   Office,
@@ -55,5 +73,7 @@ module.exports = {
   CargoCheckpoint,
   OtpVerification,
   AuditLog,
-  ReportDownloadLog
+  ReportDownloadLog,
+  OfficeVerification,
+  Notification
 };

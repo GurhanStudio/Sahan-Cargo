@@ -4,7 +4,8 @@ import {
   HiOutlineHome, HiOutlineUsers, HiOutlineOfficeBuilding,
   HiOutlineDocumentReport, HiOutlineClipboardList, HiOutlineLogout,
   HiOutlineQrcode, HiOutlineTruck, HiOutlinePlusCircle,
-  HiOutlineCheckCircle, HiOutlineSearch, HiOutlineCollection
+  HiOutlineCheckCircle, HiOutlineSearch, HiOutlineCollection,
+  HiOutlineBadgeCheck, HiOutlineClipboard, HiOutlinePaperAirplane
 } from 'react-icons/hi';
 
 const menuByRole = {
@@ -18,22 +19,25 @@ const menuByRole = {
   ],
   ORIGIN_OFFICE: [
     { label: 'Register Cargo', path: '/origin/register', icon: HiOutlinePlusCircle },
-    { label: 'Scan Cargo', path: '/origin/scan', icon: HiOutlineQrcode },
     { label: 'Cargo List', path: '/origin/list', icon: HiOutlineCollection },
     { label: 'Track Cargo', path: '/origin/track', icon: HiOutlineSearch },
+    { label: 'Daily Verified', path: '/origin/daily-verified', icon: HiOutlineBadgeCheck },
   ],
   AIRPORT_CARGO: [
     { label: 'Scan Cargo', path: '/airport/scan', icon: HiOutlineQrcode },
-    { label: 'Verify Cargo', path: '/airport/verify', icon: HiOutlineCheckCircle },
+    { label: 'Load on Aircraft', path: '/airport/load-aircraft', icon: HiOutlinePaperAirplane },
     { label: 'Loaded Cargo', path: '/airport/loaded', icon: HiOutlineTruck },
+    { label: 'Daily Verified', path: '/airport/daily-verified', icon: HiOutlineBadgeCheck },
   ],
   DESTINATION_AIRPORT: [
-    { label: 'Scan Cargo', path: '/dest-airport/scan', icon: HiOutlineQrcode },
-    { label: 'Confirm Arrival', path: '/dest-airport/arrival', icon: HiOutlineCheckCircle },
+    { label: 'Confirm Arrival', path: '/dest-airport/scan', icon: HiOutlineCheckCircle },
+    { label: 'Arrival List', path: '/dest-airport/arrival-list', icon: HiOutlineClipboard },
+    { label: 'Daily Verified', path: '/dest-airport/daily-verified', icon: HiOutlineBadgeCheck },
   ],
   DESTINATION_OFFICE: [
     { label: 'Scan Cargo', path: '/dest-office/scan', icon: HiOutlineQrcode },
     { label: 'Delivered Cargo', path: '/dest-office/delivered', icon: HiOutlineTruck },
+    { label: 'Daily Verified', path: '/dest-office/daily-verified', icon: HiOutlineBadgeCheck },
   ]
 };
 
@@ -49,7 +53,6 @@ export default function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 bg-gray-900/95 backdrop-blur-sm border-r border-gray-800 flex flex-col z-40">
-      {/* Logo */}
       <div className="p-6 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center">
@@ -62,15 +65,10 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {menu.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              `sidebar-link ${isActive ? 'active' : ''}`
-            }
+          <NavLink key={item.path} to={item.path}
+            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
           >
             <item.icon className="text-lg" />
             {item.label}
@@ -78,7 +76,6 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* User Info & Logout */}
       <div className="p-4 border-t border-gray-800">
         <div className="flex items-center gap-3 mb-3 px-2">
           <div className="w-9 h-9 bg-primary-600/30 rounded-full flex items-center justify-center text-primary-400 font-bold text-sm">
