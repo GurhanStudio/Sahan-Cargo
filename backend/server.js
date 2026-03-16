@@ -7,8 +7,20 @@ const { sequelize } = require('./models');
 const app = express();
 
 // ── Middleware ──
+const allowedOrigins = [
+  process.env.FRONTEND_URL,            // e.g. https://sahan-cargo.netlify.app
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+].filter(Boolean); // remove undefined if FRONTEND_URL not set
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Render health checks)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true
 }));
 app.use(express.json());
