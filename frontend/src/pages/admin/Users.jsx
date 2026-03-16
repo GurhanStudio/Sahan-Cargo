@@ -139,14 +139,14 @@ export default function Users() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title mb-1">User Management</h1>
           <p className="text-gray-500 text-sm">{activeCount} active · {users.length - activeCount} inactive · {users.length} total</p>
         </div>
         <button
           onClick={() => { setShowForm(!showForm); setEditing(null); setForm(EMPTY_FORM); }}
-          className={showForm ? 'btn-secondary flex items-center gap-2' : 'btn-primary flex items-center gap-2'}
+          className={`shrink-0 ${showForm ? 'btn-secondary flex items-center gap-2' : 'btn-primary flex items-center gap-2'}`}
         >
           {showForm ? <><HiOutlineXCircle /> Cancel</> : <><HiOutlinePlusCircle /> Add User</>}
         </button>

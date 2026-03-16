@@ -46,7 +46,7 @@ export default function RegisterCargo() {
       {result && (
         <div className="card border-emerald-800 bg-emerald-900/20">
           <h2 className="text-lg font-semibold text-emerald-400 mb-3">✅ Cargo Registered Successfully</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-400">Tracking Number</p>
               <p className="text-xl font-mono font-bold text-white">{result.tracking_number}</p>

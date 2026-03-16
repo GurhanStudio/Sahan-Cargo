@@ -42,14 +42,14 @@ export default function LoadOnAircraft() {
     return (
         <div className="space-y-5">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                     <h1 className="page-title mb-1">✈️ Load on Aircraft</h1>
                     <p className="text-gray-500 text-sm">
                         {cargos.length} cargo item{cargos.length !== 1 ? 's' : ''} received at origin airport — waiting to be loaded
                     </p>
                 </div>
-                <button onClick={load} className="btn-secondary flex items-center gap-2 text-sm">
+                <button onClick={load} className="btn-secondary flex items-center gap-2 text-sm shrink-0">
                     <HiOutlineRefresh /> Refresh
                 </button>
             </div>
