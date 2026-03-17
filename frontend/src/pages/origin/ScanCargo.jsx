@@ -29,16 +29,20 @@ export default function ScanCargo({ role }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
+  // Extract once so it can be a useEffect dependency.
+  // This ensures auto-load fires on fresh mount AND when the same
+  // component receives a new ?tracking= param (e.g. QRDispatch navigating
+  // to the page while ScanCargo is already mounted).
+  const trackingFromUrl = searchParams.get('tracking');
+
   const targetCheckpoint = ROLE_CHECKPOINT[role];
 
-  // Auto-load cargo if tracking number is passed via QR dispatch (?tracking=...)
   useEffect(() => {
-    const trackingParam = searchParams.get('tracking');
-    if (trackingParam) {
-      setTracking(trackingParam);
-      handleScan(trackingParam);
+    if (trackingFromUrl) {
+      setTracking(trackingFromUrl);
+      handleScan(trackingFromUrl);
     }
-  }, []); // run once on mount
+  }, [trackingFromUrl]); // re-run whenever the URL param changes
 
   const handleScan = async (trackingNumber) => {
     setTracking(trackingNumber);
@@ -111,6 +115,9 @@ export default function ScanCargo({ role }) {
     setCondition('GOOD');
     setNote('');
     setPhoto(null);
+    // Clear ?tracking= from the URL so it doesn't re-trigger auto-load
+    // when the user wants to scan a different cargo manually.
+    navigate({ search: '' }, { replace: true });
   };
 
   return (

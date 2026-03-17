@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import QRScanner from '../../components/QRScanner';
 import API from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -14,19 +14,20 @@ export default function LoadOnAircraft() {
   const [note, setNote]           = useState('');
   const [photo, setPhoto]         = useState(null);
   const [loading, setLoading]     = useState(false);
-  const [searchParams]            = useSearchParams();
+  const navigate      = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const TARGET = 'LOADED_ON_AIRCRAFT';
-  const EXPECTED_CURRENT = 'RECEIVED_AT_ORIGIN_AIRPORT'; // cargo must be at this stage
+  // Extract once so it is a stable useEffect dependency.
+  // Fires on fresh mount AND when QRDispatch navigates to this page
+  // with a new ?tracking= param while the component is already mounted.
+  const trackingFromUrl = searchParams.get('tracking');
 
-  // Auto-load cargo if tracking passed via QR dispatch (?tracking=...)
   useEffect(() => {
-    const t = searchParams.get('tracking');
-    if (t) {
-      setTracking(t);
-      fetchCargo(t);
+    if (trackingFromUrl) {
+      setTracking(trackingFromUrl);
+      fetchCargo(trackingFromUrl);
     }
-  }, []);
+  }, [trackingFromUrl]);
 
   const fetchCargo = async (trackingNumber) => {
     setTracking(trackingNumber);
@@ -89,6 +90,8 @@ export default function LoadOnAircraft() {
     setCondition('GOOD');
     setNote('');
     setPhoto(null);
+    // Clear ?tracking= from URL so the scanner/search UI shows cleanly.
+    navigate({ search: '' }, { replace: true });
   };
 
   return (
