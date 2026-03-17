@@ -16,7 +16,7 @@ async function generateQRCode(trackingNumber, baseUrl = process.env.FRONTEND_URL
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
-  const url = `${baseUrl}/receiver/confirm/${trackingNumber}`;
+  const url = `${baseUrl}/qr/${trackingNumber}`;
   const filename = `qr_${trackingNumber}.png`;
   const filepath = path.join(uploadsDir, filename);
 

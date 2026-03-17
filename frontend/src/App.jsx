@@ -17,6 +17,7 @@ import ScanCargo from './pages/origin/ScanCargo';
 import CargoList from './pages/origin/CargoList';
 import CargoTrack from './pages/origin/CargoTrack';
 import ConfirmReceipt from './pages/receiver/ConfirmReceipt';
+import QRDispatch from './pages/QRDispatch';
 
 // Shared
 import CargoDetail from './pages/shared/CargoDetail';
@@ -34,6 +35,7 @@ function App() {
           {/* Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/receiver/confirm/:trackingNumber?" element={<ConfirmReceipt />} />
+          <Route path="/qr/:trackingNumber" element={<QRDispatch />} />
 
           {/* ADMIN */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN']}><Layout /></ProtectedRoute>}>
