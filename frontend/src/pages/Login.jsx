@@ -1,33 +1,41 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { HiOutlineTruck, HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
 
 const roleRedirect = {
-  ADMIN: '/admin/dashboard',
-  ORIGIN_OFFICE: '/origin/register',
-  AIRPORT_CARGO: '/airport/scan',
+  ADMIN:               '/admin/dashboard',
+  ORIGIN_OFFICE:       '/origin/register',
+  AIRPORT_CARGO:       '/airport/scan',
   DESTINATION_AIRPORT: '/dest-airport/scan',
-  DESTINATION_OFFICE: '/dest-office/scan'
+  DESTINATION_OFFICE:  '/dest-office/scan',
 };
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const [error, setError]             = useState('');
+  const [loading, setLoading]         = useState(false);
+  const { login }   = useAuth();
+  const navigate    = useNavigate();
+  const location    = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const user = await login(email, password, remember);
-      navigate(roleRedirect[user.role] || '/login');
+      const user = await login(email, password);
+
+      // If the user was redirected here from a protected page (e.g. via QR scan),
+      // send them back to that page — preserving the full path + query params.
+      const from = location.state?.from;
+      if (from && from.pathname !== '/login') {
+        navigate(from.pathname + (from.search || ''), { replace: true });
+      } else {
+        navigate(roleRedirect[user.role] || '/login');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -105,20 +113,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Remember me */}
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="remember"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-primary-600 focus:ring-primary-500"
-              />
-              <label htmlFor="remember" className="ml-2 text-sm text-gray-400">
-                Remember me
-              </label>
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -132,7 +126,6 @@ export default function Login() {
           </form>
         </div>
 
-        {/* Persistent login note */}
         <p className="text-center text-gray-600 text-xs mt-4">
           Your session is saved automatically — no need to log in every visit.
         </p>

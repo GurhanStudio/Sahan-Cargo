@@ -1,24 +1,22 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import QRScanner from '../../components/QRScanner';
 import API from '../../api/axios';
 import toast from 'react-hot-toast';
-import { HiOutlinePaperAirplane } from 'react-icons/hi';
 
-// Maps each role to the single checkpoint it is responsible for confirming via this scan page.
-// AIRPORT_CARGO only handles RECEIVED_AT_ORIGIN_AIRPORT here.
-// Loading onto the aircraft (LOADED_ON_AIRCRAFT) is handled exclusively by /airport/load-aircraft.
+// Maps each role to the single checkpoint it is responsible for confirming.
+// AIRPORT_CARGO handles RECEIVED_AT_ORIGIN_AIRPORT here — that's it.
+// Loading onto aircraft (LOADED_ON_AIRCRAFT) is handled exclusively by /airport/load-aircraft.
 const ROLE_CHECKPOINT = {
-  AIRPORT_CARGO: 'RECEIVED_AT_ORIGIN_AIRPORT',
+  AIRPORT_CARGO:       'RECEIVED_AT_ORIGIN_AIRPORT',
   DESTINATION_AIRPORT: 'ARRIVED_AT_DESTINATION_AIRPORT',
-  DESTINATION_OFFICE: 'RECEIVED_AT_DESTINATION_OFFICE',
+  DESTINATION_OFFICE:  'RECEIVED_AT_DESTINATION_OFFICE',
 };
 
-// Readable page titles per role
 const ROLE_TITLE = {
-  AIRPORT_CARGO: '✈️ Airport Cargo Scan',
+  AIRPORT_CARGO:       '✈️ Airport Cargo Scan',
   DESTINATION_AIRPORT: '🛬 Confirm Arrival',
-  DESTINATION_OFFICE: '📬 Destination Office Scan',
+  DESTINATION_OFFICE:  '📬 Destination Office Scan',
 };
 
 export default function ScanCargo({ role }) {
@@ -29,9 +27,18 @@ export default function ScanCargo({ role }) {
   const [photo, setPhoto] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  // The one checkpoint this role is allowed to confirm on this page
   const targetCheckpoint = ROLE_CHECKPOINT[role];
+
+  // Auto-load cargo if tracking number is passed via QR dispatch (?tracking=...)
+  useEffect(() => {
+    const trackingParam = searchParams.get('tracking');
+    if (trackingParam) {
+      setTracking(trackingParam);
+      handleScan(trackingParam);
+    }
+  }, []); // run once on mount
 
   const handleScan = async (trackingNumber) => {
     setTracking(trackingNumber);
@@ -49,28 +56,17 @@ export default function ScanCargo({ role }) {
     if (tracking) handleScan(tracking);
   };
 
-  // Returns whether this cargo is ready for the current role's checkpoint
   const isReadyForCheckpoint = () => {
     if (!cargo || !targetCheckpoint) return false;
     const statusFlow = [
-      'REGISTERED',
-      'RECEIVED_AT_ORIGIN_AIRPORT',
-      'LOADED_ON_AIRCRAFT',
-      'ARRIVED_AT_DESTINATION_AIRPORT',
-      'RECEIVED_AT_DESTINATION_OFFICE',
-      'DELIVERED',
+      'REGISTERED', 'RECEIVED_AT_ORIGIN_AIRPORT', 'LOADED_ON_AIRCRAFT',
+      'ARRIVED_AT_DESTINATION_AIRPORT', 'RECEIVED_AT_DESTINATION_OFFICE', 'DELIVERED',
     ];
     const currentIdx = statusFlow.indexOf(cargo.current_status);
-    const targetIdx = statusFlow.indexOf(targetCheckpoint);
-    // Ready if cargo's current status is exactly one step before targetCheckpoint
+    const targetIdx  = statusFlow.indexOf(targetCheckpoint);
     return currentIdx === targetIdx - 1;
   };
 
-  // Returns true if AIRPORT_CARGO scans cargo that is already at origin airport (next step = LOADED)
-  const needsLoadOnAircraft = () =>
-    role === 'AIRPORT_CARGO' && cargo?.current_status === 'RECEIVED_AT_ORIGIN_AIRPORT';
-
-  // Returns true if cargo is already past or at the target checkpoint
   const alreadyProcessed = () => {
     if (!cargo || !targetCheckpoint) return false;
     const statusFlow = [
@@ -78,7 +74,7 @@ export default function ScanCargo({ role }) {
       'ARRIVED_AT_DESTINATION_AIRPORT', 'RECEIVED_AT_DESTINATION_OFFICE', 'DELIVERED',
     ];
     const currentIdx = statusFlow.indexOf(cargo.current_status);
-    const targetIdx = statusFlow.indexOf(targetCheckpoint);
+    const targetIdx  = statusFlow.indexOf(targetCheckpoint);
     return currentIdx >= targetIdx;
   };
 
@@ -92,7 +88,7 @@ export default function ScanCargo({ role }) {
       const fd = new FormData();
       fd.append('checkpoint_name', targetCheckpoint);
       fd.append('condition_status', condition);
-      if (note) fd.append('note', note);
+      if (note)  fd.append('note', note);
       if (photo) fd.append('photo', photo);
 
       await API.post(`/checkpoint/${cargo.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -109,13 +105,19 @@ export default function ScanCargo({ role }) {
     }
   };
 
+  const resetScan = () => {
+    setCargo(null);
+    setTracking('');
+    setCondition('GOOD');
+    setNote('');
+    setPhoto(null);
+  };
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <h1 className="page-title">
-        {ROLE_TITLE[role] || '📷 Scan Cargo'}
-      </h1>
+      <h1 className="page-title">{ROLE_TITLE[role] || '📷 Scan Cargo'}</h1>
 
-      {/* Scan / Search */}
+      {/* Scan / Search — only show when no cargo loaded */}
       {!cargo && (
         <>
           <div className="card">
@@ -156,44 +158,22 @@ export default function ScanCargo({ role }) {
             </div>
           </div>
 
-          {/* ── AIRPORT_CARGO: cargo already received, direct to Load on Aircraft page ── */}
-          {needsLoadOnAircraft() && (
-            <div className="card border-indigo-800/60 bg-indigo-900/20">
-              <div className="flex items-start gap-4">
-                <HiOutlinePaperAirplane className="text-indigo-400 text-2xl flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-white font-semibold mb-1">Ready to Load on Aircraft</p>
-                  <p className="text-indigo-300 text-sm mb-4">
-                    This cargo has already been received at the origin airport.
-                    Use the <strong>Load on Aircraft</strong> page to mark it as loaded.
-                  </p>
-                  <Link to="/airport/load-aircraft" className="btn-primary inline-flex items-center gap-2 text-sm">
-                    <HiOutlinePaperAirplane /> Go to Load on Aircraft
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Cargo already past this checkpoint ── */}
-          {alreadyProcessed() && !needsLoadOnAircraft() && (
+          {/* Already past this checkpoint */}
+          {alreadyProcessed() && (
             <div className="card text-center py-8">
-              <p className="text-emerald-400 text-lg font-semibold mb-1">
-                ✅ Already processed
-              </p>
+              <p className="text-emerald-400 text-lg font-semibold mb-1">✅ Already processed</p>
               <p className="text-gray-500 text-sm">
                 Current status: <span className="text-white">{cargo.current_status?.replace(/_/g, ' ')}</span>
               </p>
             </div>
           )}
 
-          {/* ── Confirm checkpoint form ── */}
+          {/* Confirm checkpoint form */}
           {isReadyForCheckpoint() && (
             <div className="card">
               <h2 className="text-lg font-semibold text-white mb-4">
                 Confirm: <span className="text-primary-400">{targetCheckpoint?.replace(/_/g, ' ')}</span>
               </h2>
-
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Condition</label>
@@ -245,8 +225,8 @@ export default function ScanCargo({ role }) {
             </div>
           )}
 
-          {/* ── Cargo not yet ready for any checkpoint on this page ── */}
-          {!isReadyForCheckpoint() && !needsLoadOnAircraft() && !alreadyProcessed() && (
+          {/* Wrong stage for this role */}
+          {!isReadyForCheckpoint() && !alreadyProcessed() && (
             <div className="card text-center py-8">
               <p className="text-amber-400 text-lg font-semibold mb-1">⚠️ Wrong stage</p>
               <p className="text-gray-500 text-sm">
@@ -256,10 +236,7 @@ export default function ScanCargo({ role }) {
             </div>
           )}
 
-          <button
-            onClick={() => { setCargo(null); setTracking(''); setCondition('GOOD'); setNote(''); setPhoto(null); }}
-            className="btn-secondary w-full"
-          >
+          <button onClick={resetScan} className="btn-secondary w-full">
             ← Scan Another
           </button>
         </div>

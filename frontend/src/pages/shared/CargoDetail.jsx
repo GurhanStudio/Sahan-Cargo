@@ -55,6 +55,7 @@ export default function CargoDetail() {
   const [cargo, setCargo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   const canPrintQR = QR_ALLOWED_ROLES.includes(user?.role);
 
@@ -75,6 +76,31 @@ export default function CargoDetail() {
   if (!cargo) return null;
 
   const handlePrintQR = () => window.print();
+
+  // Cross-origin download: fetch the image as a blob, then force a browser download.
+  // An anchor[download] only works on same-origin URLs, which fails when the
+  // backend (Render) and frontend (Netlify) are on different domains.
+  const handleDownloadQR = async () => {
+    if (!cargo?.qr_code_url) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(`${API_BASE}${cargo.qr_code_url}`);
+      if (!response.ok) throw new Error('Failed to fetch QR image');
+      const blob = await response.blob();
+      const objectURL = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectURL;
+      a.download = `QR_${cargo.tracking_number}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectURL);
+    } catch {
+      alert('QR download failed. Try right-clicking the QR image and saving it.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -266,17 +292,17 @@ export default function CargoDetail() {
                     {STATUS_NEXT_LABEL[cargo.current_status] || 'Next step determined by current status'}
                   </p>
 
-                  {/* Download QR — ADMIN and ORIGIN_OFFICE only */}
+                  {/* Download + Print QR — ADMIN and ORIGIN_OFFICE only */}
                   {canPrintQR && (
                     <>
-                      <a
-                        href={`${API_BASE}${cargo.qr_code_url}`}
-                        download={`QR_${cargo.tracking_number}.png`}
-                        className="btn-secondary text-sm w-full text-center flex items-center justify-center gap-2"
+                      <button
+                        onClick={handleDownloadQR}
+                        disabled={downloading}
+                        className="btn-secondary text-sm w-full flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         <HiOutlineDownload className="text-lg" />
-                        Download QR
-                      </a>
+                        {downloading ? 'Downloading...' : 'Download QR'}
+                      </button>
                       <button
                         onClick={handlePrintQR}
                         className="btn-primary text-sm w-full flex items-center justify-center gap-2"
