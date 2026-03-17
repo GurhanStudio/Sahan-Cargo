@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import API from '../../api/axios';
 import toast from 'react-hot-toast';
+import { HiOutlinePrinter } from 'react-icons/hi';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function RegisterCargo() {
   const { user } = useAuth();
@@ -14,6 +17,7 @@ export default function RegisterCargo() {
     origin_office_id: '', destination_office_id: ''
   });
   const [photo, setPhoto] = useState(null);
+  const printRef = useRef(null);
 
   useEffect(() => {
     API.get('/offices').then(r => {
@@ -39,31 +43,147 @@ export default function RegisterCargo() {
     finally { setLoading(false); }
   };
 
+  // Trigger browser print — only the print-label section is shown via @media print CSS
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Destination office name helper
+  const destOfficeName = offices.find(o => String(o.id) === String(form.destination_office_id))?.office_name || '';
+
   return (
     <div className="space-y-6 max-w-4xl">
       <h1 className="page-title">Register New Cargo</h1>
 
+      {/* ── Success Card ── */}
       {result && (
-        <div className="card border-emerald-800 bg-emerald-900/20">
-          <h2 className="text-lg font-semibold text-emerald-400 mb-3">✅ Cargo Registered Successfully</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-400">Tracking Number</p>
-              <p className="text-xl font-mono font-bold text-white">{result.tracking_number}</p>
+        <>
+          {/* Screen view */}
+          <div className="card border-emerald-800 bg-emerald-900/20 no-print">
+            <h2 className="text-lg font-semibold text-emerald-400 mb-4">✅ Cargo Registered Successfully</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div>
+                <p className="text-sm text-gray-400">Tracking Number</p>
+                <p className="text-xl font-mono font-bold text-white">{result.tracking_number}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400">QR Code</p>
+                {result.qr_code_url && (
+                  <a
+                    href={`${API_BASE}${result.qr_code_url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-400 hover:underline text-sm"
+                  >
+                    📥 Download QR Code
+                  </a>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-400">QR Code</p>
+            {/* QR preview on screen */}
+            {result.qr_code_url && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <img
+                  src={`${API_BASE}${result.qr_code_url}`}
+                  alt="QR Code"
+                  className="w-28 h-28 bg-white rounded-xl p-1 border border-gray-700"
+                />
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handlePrint}
+                    className="btn-primary flex items-center gap-2 text-sm"
+                  >
+                    <HiOutlinePrinter className="text-lg" />
+                    Print QR Label
+                  </button>
+                  <button onClick={() => setResult(null)} className="btn-secondary text-sm">
+                    Register Another
+                  </button>
+                </div>
+              </div>
+            )}
+            {!result.qr_code_url && (
+              <button onClick={() => setResult(null)} className="btn-secondary mt-2 text-sm">Register Another</button>
+            )}
+          </div>
+
+          {/* ── Print-only QR Label ── */}
+          <div ref={printRef} className="print-only">
+            <div style={{
+              fontFamily: 'Inter, Arial, sans-serif',
+              border: '2px solid #1e3a8a',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '320px',
+              margin: '0 auto',
+              backgroundColor: '#fff',
+              color: '#111',
+              textAlign: 'center',
+            }}>
+              {/* Header */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{
+                  fontSize: '20px', fontWeight: '800',
+                  color: '#1e40af', letterSpacing: '1px',
+                }}>✈ SAHAN CARGO</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                  Airline Cargo Tracking System
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid #cbd5e1', margin: '10px 0' }} />
+
+              {/* Tracking number */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  Tracking Number
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '700', fontFamily: 'monospace', color: '#1e3a8a', letterSpacing: '1px' }}>
+                  {result.tracking_number}
+                </div>
+              </div>
+
+              {/* QR Code */}
               {result.qr_code_url && (
-                <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${result.qr_code_url}`} target="_blank" className="text-primary-400 hover:underline text-sm">
-                  📥 Download QR Code
-                </a>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+                  <img
+                    src={`${API_BASE}${result.qr_code_url}`}
+                    alt="QR Code"
+                    style={{ width: '160px', height: '160px' }}
+                  />
+                </div>
               )}
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid #cbd5e1', margin: '10px 0' }} />
+
+              {/* Receiver + Destination */}
+              <div style={{ fontSize: '12px', color: '#374151', textAlign: 'left' }}>
+                {result.receiver_name && (
+                  <div style={{ marginBottom: '4px' }}>
+                    <span style={{ color: '#64748b' }}>Receiver: </span>
+                    <strong>{result.receiver_name}</strong>
+                  </div>
+                )}
+                {result.destinationOffice?.office_name && (
+                  <div>
+                    <span style={{ color: '#64748b' }}>Destination: </span>
+                    <strong>{result.destinationOffice.office_name}</strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ marginTop: '14px', fontSize: '10px', color: '#94a3b8' }}>
+                Scan this QR code to confirm delivery
+              </div>
             </div>
           </div>
-          <button onClick={() => setResult(null)} className="btn-secondary mt-4 text-sm">Register Another</button>
-        </div>
+        </>
       )}
 
+      {/* ── Registration Form ── */}
       {!result && (
         <div className="card">
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -99,7 +219,7 @@ export default function RegisterCargo() {
               </div>
             </div>
 
-            {/* Offices */}
+            {/* Route */}
             <div>
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Route</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

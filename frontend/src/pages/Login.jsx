@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { HiOutlineTruck } from 'react-icons/hi';
+import { HiOutlineTruck, HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
 
 const roleRedirect = {
   ADMIN: '/admin/dashboard',
@@ -14,6 +14,7 @@ const roleRedirect = {
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,9 +38,9 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary-800/10 rounded-full blur-3xl"></div>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-600/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary-800/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md">
@@ -63,6 +64,7 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Email Address</label>
               <input
@@ -72,21 +74,38 @@ export default function Login() {
                 className="input-field"
                 placeholder="admin@sahancargo.com"
                 required
+                autoComplete="email"
               />
             </div>
 
+            {/* Password with show/hide toggle */}
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                placeholder="••••••••"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input-field pr-12"
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors p-1"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword
+                    ? <HiOutlineEyeOff className="text-xl" />
+                    : <HiOutlineEye className="text-xl" />
+                  }
+                </button>
+              </div>
             </div>
 
+            {/* Remember me */}
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -95,18 +114,29 @@ export default function Login() {
                 onChange={(e) => setRemember(e.target.checked)}
                 className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-primary-600 focus:ring-primary-500"
               />
-              <label htmlFor="remember" className="ml-2 text-sm text-gray-400">Remember me</label>
+              <label htmlFor="remember" className="ml-2 text-sm text-gray-400">
+                Remember me
+              </label>
             </div>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2">
-              {loading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-              ) : 'Sign In'}
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full flex items-center justify-center gap-2"
+            >
+              {loading
+                ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                : 'Sign In'
+              }
             </button>
           </form>
         </div>
 
-        <p className="text-center text-gray-600 text-xs mt-6">
+        {/* Persistent login note */}
+        <p className="text-center text-gray-600 text-xs mt-4">
+          Your session is saved automatically — no need to log in every visit.
+        </p>
+        <p className="text-center text-gray-700 text-xs mt-1">
           © 2026 Sahan Cargo. All rights reserved.
         </p>
       </div>
