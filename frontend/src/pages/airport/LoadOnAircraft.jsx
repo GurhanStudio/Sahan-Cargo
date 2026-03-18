@@ -7,6 +7,24 @@ import toast from 'react-hot-toast';
 // This page handles ONLY the LOADED_ON_AIRCRAFT checkpoint.
 // The previous scan step (RECEIVED_AT_ORIGIN_AIRPORT) is on /airport/scan.
 
+const TARGET           = 'LOADED_ON_AIRCRAFT';
+const EXPECTED_CURRENT = 'RECEIVED_AT_ORIGIN_AIRPORT';
+
+/**
+ * Extract a raw tracking number from either a plain string or a full URL.
+ * QR codes encode the full /qr/<tracking> URL, so we parse it out here.
+ */
+function extractTracking(raw) {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  try {
+    const url = new URL(trimmed);
+    const last = url.pathname.split('/').filter(Boolean).pop();
+    if (last) return last;
+  } catch { /* not a URL */ }
+  return trimmed;
+}
+
 export default function LoadOnAircraft() {
   const [tracking, setTracking]   = useState('');
   const [cargo, setCargo]         = useState(null);
@@ -29,16 +47,21 @@ export default function LoadOnAircraft() {
     }
   }, [trackingFromUrl]);
 
-  const fetchCargo = async (trackingNumber) => {
-    setTracking(trackingNumber);
+  const fetchCargo = async (raw) => {
+    const tn = extractTracking(raw);
+    if (!tn) return;
+    setTracking(tn);
     try {
-      const res = await API.get(`/cargo/track/${trackingNumber}`);
+      const res = await API.get(`/cargo/track/${tn}`);
       setCargo(res.data);
       toast.success('Cargo found!');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Cargo not found');
     }
   };
+
+  // QR scanner callback — auto-fetch immediately.
+  const handleQRScan = (scannedValue) => fetchCargo(scannedValue);
 
   const handleManualSearch = (e) => {
     e.preventDefault();
@@ -102,7 +125,7 @@ export default function LoadOnAircraft() {
       {!cargo && (
         <>
           <div className="card">
-            <QRScanner onScan={fetchCargo} onError={(e) => toast.error(e)} />
+            <QRScanner onScan={handleQRScan} onError={(e) => toast.error(e)} />
           </div>
           <div className="card">
             <p className="text-sm text-gray-400 mb-3">Or enter tracking number manually:</p>

@@ -6,13 +6,16 @@ import API from '../api/axios';
  * QRDispatch — public page that reads a cargo's current status
  * and redirects the scanner to the correct next workflow step.
  *
+ * The tracking number is passed as a query param (?tracking=...) so the
+ * destination scan/action page can auto-load the cargo immediately.
+ *
  * Status → Next Route mapping:
- *   REGISTERED                    → /airport/scan          (AIRPORT_CARGO confirms RECEIVED_AT_ORIGIN_AIRPORT)
- *   RECEIVED_AT_ORIGIN_AIRPORT    → /airport/load-aircraft  (AIRPORT_CARGO confirms LOADED_ON_AIRCRAFT)
- *   LOADED_ON_AIRCRAFT            → /dest-airport/scan      (DESTINATION_AIRPORT confirms ARRIVED_AT_DESTINATION_AIRPORT)
- *   ARRIVED_AT_DESTINATION_AIRPORT→ /dest-office/scan       (DESTINATION_OFFICE confirms RECEIVED_AT_DESTINATION_OFFICE)
- *   RECEIVED_AT_DESTINATION_OFFICE→ /receiver/confirm/:trackingNumber  (Public receiver confirmation)
- *   DELIVERED                     → show "Delivered" message
+ *   REGISTERED                     → /airport/scan?tracking=...
+ *   RECEIVED_AT_ORIGIN_AIRPORT     → /airport/load-aircraft?tracking=...
+ *   LOADED_ON_AIRCRAFT             → /dest-airport/scan?tracking=...
+ *   ARRIVED_AT_DESTINATION_AIRPORT → /dest-office/scan?tracking=...
+ *   RECEIVED_AT_DESTINATION_OFFICE → /receiver/confirm/:trackingNumber (public)
+ *   DELIVERED                      → show "Delivered" message
  */
 
 const STATUS_NEXT_ROUTE = {
@@ -37,19 +40,21 @@ export default function QRDispatch() {
         setCargo(res.data);
 
         if (current_status === 'RECEIVED_AT_DESTINATION_OFFICE') {
-          // Final stage — go to receiver confirmation (public page)
+          // Final stage — public receiver confirmation (no login needed)
           navigate(`/receiver/confirm/${tracking_number}`, { replace: true });
           return;
         }
 
         if (current_status === 'DELIVERED') {
-          // Workflow complete — stay on this page and show delivered status
+          // Workflow complete — stay here and show delivered message
           return;
         }
 
-        const nextRoute = STATUS_NEXT_ROUTE[current_status];
-        if (nextRoute) {
-          navigate(nextRoute, { replace: true });
+        const baseRoute = STATUS_NEXT_ROUTE[current_status];
+        if (baseRoute) {
+          // Pass tracking number as query param so the destination page
+          // can auto-load the cargo without the user needing to re-scan/type
+          navigate(`${baseRoute}?tracking=${tracking_number}`, { replace: true });
         } else {
           setError(`Unknown cargo status: ${current_status}`);
         }
@@ -69,7 +74,7 @@ export default function QRDispatch() {
     );
   }
 
-  // Delivered — show final state
+  // Delivered
   if (cargo?.current_status === 'DELIVERED') {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
@@ -79,15 +84,13 @@ export default function QRDispatch() {
           <p className="text-gray-400">
             Cargo <span className="font-mono text-primary-400">{cargo.tracking_number}</span> has been successfully delivered.
           </p>
-          <p className="text-gray-500 text-sm">
-            This cargo has completed its journey.
-          </p>
+          <p className="text-gray-500 text-sm">This cargo has completed its journey.</p>
         </div>
       </div>
     );
   }
 
-  // Error state
+  // Error
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
       <div className="card max-w-sm w-full text-center space-y-4">
