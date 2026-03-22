@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { sequelize } = require('./models');
+const { startDelayedNotificationScheduler } = require('./services/delayedNotificationScheduler');
 
 const app = express();
 
@@ -62,16 +63,17 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connected successfully.');
-
-if (process.env.NODE_ENV === "development") {
-  await sequelize.sync({ alter: true });
-} else {
-  await sequelize.authenticate();
-}
+    if (process.env.NODE_ENV === "development") {
+      await sequelize.sync({ alter: true });
+    } else {
+      await sequelize.authenticate();
+    }
     console.log('✅ Database tables synced.');
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
+      // Start delayed cargo notification scheduler after DB is ready
+      startDelayedNotificationScheduler();
     });
   } catch (error) {
     console.error('❌ Unable to start server:', error);

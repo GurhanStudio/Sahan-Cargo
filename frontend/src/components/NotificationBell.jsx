@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import {
     HiOutlineBell, HiOutlineCheckCircle, HiOutlineExclamation,
     HiOutlineInformationCircle, HiOutlineX, HiOutlineCheck
 } from 'react-icons/hi';
+
+// Role-specific cargo detail base paths (mirrors DailyVerified / CargoList)
+const ROLE_DETAIL_PATH = {
+    ADMIN:               '/admin/cargo',
+    ORIGIN_OFFICE:       '/origin/cargo',
+    AIRPORT_CARGO:       '/airport/cargo',
+    DESTINATION_AIRPORT: '/dest-airport/cargo',
+    DESTINATION_OFFICE:  '/dest-office/cargo',
+};
 
 const TYPE_STYLES = {
     info: { icon: HiOutlineInformationCircle, bg: 'bg-blue-900/40', border: 'border-blue-800/50', text: 'text-blue-300', dot: 'bg-blue-400' },
@@ -23,6 +33,7 @@ function timeAgo(date) {
 
 export default function NotificationBell() {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [open, setOpen] = useState(false);
     const [data, setData] = useState({ notifications: [], unreadCount: 0 });
     const panelRef = useRef();
@@ -102,7 +113,13 @@ export default function NotificationBell() {
                                     <div
                                         key={n.id}
                                         className={`px-4 py-3 flex items-start gap-3 cursor-pointer hover:bg-gray-800/40 transition-colors ${!n.is_read ? 'bg-gray-800/20' : ''}`}
-                                        onClick={() => { markRead(n.id); if (n.cargo_id) navigate(`/admin/cargo/${n.cargo_id}`); }}
+                                        onClick={() => {
+                                            markRead(n.id);
+                                            if (n.cargo_id) {
+                                                const base = ROLE_DETAIL_PATH[user?.role] || '/admin/cargo';
+                                                navigate(`${base}/${n.cargo_id}`);
+                                            }
+                                        }}
                                     >
                                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${style.bg}`}>
                                             <Icon className={`text-sm ${style.text}`} />
