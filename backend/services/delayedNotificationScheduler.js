@@ -1,60 +1,109 @@
 /**
  * Delayed Cargo Notification Scheduler
  *
- * Runs on a configurable interval (default 30s for testing, longer in production).
- * Detects cargo that has been stuck at a workflow stage longer than the configured
- * delay threshold, then creates notifications for:
- *   - The office responsible for the stuck stage (target_office_id)
+ * Runs on a configurable interval (default 30 000 ms).
+ * Detects cargo stuck past delay thresholds and dispatches notifications to:
+ *   - The office ACTUALLY responsible for the stuck stage
  *   - All admins (target_role = 'ADMIN')
  *
- * Duplicate prevention (two-layer):
- *   1. In-memory Set keyed by "cargoId:currentStatus" — fast runtime guard.
- *   2. DB check — queries the notifications table before inserting so that a
- *      server restart does not re-spam notifications that were already sent.
+ * ── How office resolution works ────────────────────────────────────────────
  *
- * When cargo advances to the next stage, the old key is evicted from the in-memory
- * set automatically because the key includes current_status.  A brand-new delay on
- * the NEW stage is therefore always eligible to produce a fresh notification.
+ * The Cargo model only stores origin_office_id (delivery / origin office) and
+ * destination_office_id (delivery / destination office).  Airport offices
+ * (AIRPORT_CARGO, DESTINATION_AIRPORT) are SEPARATE offices not referenced
+ * directly on the cargo.
+ *
+ * Priority resolution for each stage:
+ *
+ *  Stage                         Primary lookup            Fallback
+ *  ─────────────────────────────────────────────────────────────────
+ *  RECEIVED_AT_ORIGIN_AIRPORT    checkpoint.user.office_id  origin_office_id
+ *  LOADED_ON_AIRCRAFT            checkpoint.user.office_id  origin_office_id
+ *  ARRIVED_AT_DESTINATION_AIRPORT checkpoint.user.office_id dest_office_id
+ *  RECEIVED_AT_DESTINATION_OFFICE dest_office_id            dest_office_id
+ *
+ * For the airport stages we JOIN through:
+ *   CargoCheckpoint → checked_by_user_id → User.office_id
+ * This finds the exact airport office that scanned the cargo.
+ *
+ * ── Duplicate prevention ───────────────────────────────────────────────────
+ *   Layer 1 — in-memory Set  key = "<cargoId>:<currentStatus>"   (fast)
+ *   Layer 2 — DB query       before inserting (survives restarts)
+ *
+ * When cargo advances to the next stage the old key is evicted automatically
+ * because the key includes current_status.
  */
 
-const { Cargo, Office, Notification } = require('../models');
+const { Cargo, CargoCheckpoint, User, Notification } = require('../models');
 const { Op } = require('sequelize');
 const DELAYS = require('../config/delayThresholds');
 
+// ─── In-memory dedup ────────────────────────────────────────────────────────
+const notifiedKeys = new Set();
+
 /**
- * Resolve which office_id is "responsible" for the stuck stage.
- *
- * RECEIVED_AT_ORIGIN_AIRPORT  → origin office (AIRPORT_CARGO scans here, but
- *                               logistically it is the origin office group)
- * LOADED_ON_AIRCRAFT          → origin office (cargo is still in the origin side)
- * ARRIVED_AT_DESTINATION_AIRPORT → destination office group
- * RECEIVED_AT_DESTINATION_OFFICE → destination office
+ * For airport-side stages, look up the checkpoint performed for this stage
+ * and return the office_id of the user who performed it.
+ * Falls back to null so the caller can use a secondary strategy.
  */
-function getResponsibleOfficeId(cargo) {
+async function getCheckpointOfficeId(cargoId, checkpointName) {
+  const cp = await CargoCheckpoint.findOne({
+    where: { cargo_id: cargoId, checkpoint_name: checkpointName },
+    include: [{ model: User, as: 'checkedBy', attributes: ['office_id'] }],
+  });
+  return cp?.checkedBy?.office_id ?? null;
+}
+
+/**
+ * Resolve which office should receive the delay notification.
+ *
+ * For origin-side airport and destination airport stages we look up the
+ * actual checkpoint record so we notify the correct airport office.
+ * For the destination delivery stage we use destination_office_id directly.
+ */
+async function getResponsibleOfficeId(cargo) {
   switch (cargo.current_status) {
     case 'RECEIVED_AT_ORIGIN_AIRPORT':
+      // Airport cargo office scanned this — look up from checkpoint
+      return (
+        (await getCheckpointOfficeId(cargo.id, 'RECEIVED_AT_ORIGIN_AIRPORT')) ??
+        cargo.origin_office_id
+      );
+
     case 'LOADED_ON_AIRCRAFT':
-      return cargo.origin_office_id;
+      // Airport cargo office loaded — look up from the RECEIVED checkpoint
+      // (LOADED checkpoint may not exist yet if still stuck pre-load)
+      return (
+        (await getCheckpointOfficeId(cargo.id, 'LOADED_ON_AIRCRAFT')) ??
+        (await getCheckpointOfficeId(cargo.id, 'RECEIVED_AT_ORIGIN_AIRPORT')) ??
+        cargo.origin_office_id
+      );
+
     case 'ARRIVED_AT_DESTINATION_AIRPORT':
+      // Destination airport scanned this — look up from checkpoint
+      return (
+        (await getCheckpointOfficeId(cargo.id, 'ARRIVED_AT_DESTINATION_AIRPORT')) ??
+        cargo.destination_office_id
+      );
+
     case 'RECEIVED_AT_DESTINATION_OFFICE':
+      // Destination delivery office — use the stored field directly
       return cargo.destination_office_id;
+
     default:
       return null;
   }
 }
 
-// In-memory dedup set — key format: "<cargoId>:<currentStatus>"
-const notifiedKeys = new Set();
-
 /**
- * Check whether a 'DELAYED_CARGO' notification already exists in the DB
- * for this exact cargo + status combination. Prevents duplicates after restarts.
+ * DB-level dedup check: returns true if we have already sent a delayed
+ * notification for this cargo + status combination.
  */
 async function alreadyNotifiedInDB(cargoId, status) {
   const existing = await Notification.findOne({
     where: {
       cargo_id: cargoId,
-      title: { [Op.like]: `%Delayed%` },
+      title: { [Op.like]: '%Delayed%' },
       message: { [Op.like]: `%${status}%` },
     },
   });
@@ -62,19 +111,16 @@ async function alreadyNotifiedInDB(cargoId, status) {
 }
 
 /**
- * Core check: query for delayed cargo and dispatch notifications.
+ * Core check: detect delayed cargo and fire notifications.
  */
 async function checkAndNotify() {
   try {
     const now = new Date();
     const hoursAgo = (h) => new Date(now - h * 3600 * 1000);
 
-    // Same query as cargoWorkflowController.getDelayedCargo
     const delayedCargos = await Cargo.findAll({
       where: {
-        current_status: {
-          [Op.notIn]: ['DELIVERED', 'REGISTERED'],
-        },
+        current_status: { [Op.notIn]: ['DELIVERED', 'REGISTERED'] },
         [Op.or]: [
           {
             current_status: 'RECEIVED_AT_ORIGIN_AIRPORT',
@@ -104,22 +150,20 @@ async function checkAndNotify() {
     for (const cargo of delayedCargos) {
       const key = `${cargo.id}:${cargo.current_status}`;
 
-      // Layer 1 — in-memory fast check
+      // Layer 1 — in-memory fast guard
       if (notifiedKeys.has(key)) continue;
 
-      // Layer 2 — DB check (handles server restarts)
-      const dbExists = await alreadyNotifiedInDB(cargo.id, cargo.current_status);
-      if (dbExists) {
-        notifiedKeys.add(key); // prime memory so next tick is fast
+      // Layer 2 — DB guard (survives restarts)
+      if (await alreadyNotifiedInDB(cargo.id, cargo.current_status)) {
+        notifiedKeys.add(key);
         continue;
       }
 
-      // Compute how long it has been stuck
       const hoursStuck = Math.round((now - new Date(cargo.updated_at)) / 3600000);
       const statusLabel = cargo.current_status.replace(/_/g, ' ');
-      const officeId = getResponsibleOfficeId(cargo);
+      const officeId = await getResponsibleOfficeId(cargo);
 
-      const title = `⚠️ Delayed Cargo`;
+      const title = '⚠️ Delayed Cargo';
       const message =
         `Cargo ${cargo.tracking_number} has been stuck at "${statusLabel}" ` +
         `for ${hoursStuck}h and may need attention.`;
@@ -148,15 +192,14 @@ async function checkAndNotify() {
         target_office_id: null,
       });
 
-      // Mark as notified in memory
       notifiedKeys.add(key);
 
       console.log(
-        `🔔 Delayed notification sent — Cargo: ${cargo.tracking_number} | Stage: ${cargo.current_status}`
+        `🔔 Delayed notification — Cargo: ${cargo.tracking_number} | ` +
+        `Stage: ${cargo.current_status} | Office: ${officeId ?? 'n/a'}`
       );
     }
   } catch (err) {
-    // Never crash the server because of the scheduler
     console.error('❌ Delayed notification scheduler error:', err.message);
   }
 }
@@ -164,11 +207,9 @@ async function checkAndNotify() {
 /**
  * Start the scheduler.
  *
- * Interval is controlled by:
- *   DELAY_CHECK_INTERVAL_MS env variable (milliseconds) — default 30 000 (30 s)
- *
- * Delay thresholds are controlled by:
- *   The values in config/delayThresholds.js (can be overridden per-environment).
+ * DELAY_CHECK_INTERVAL_MS  — interval in ms  (default 30 000)
+ * DELAY_AT_ORIGIN_AIRPORT  — threshold hours (default from delayThresholds.js)
+ * ...etc.
  */
 function startDelayedNotificationScheduler() {
   const intervalMs = parseInt(process.env.DELAY_CHECK_INTERVAL_MS) || 30_000;
@@ -181,7 +222,6 @@ function startDelayedNotificationScheduler() {
     `AT_DEST_OFFICE=${DELAYS.AT_DESTINATION_OFFICE}h)`
   );
 
-  // Run once immediately on startup, then on the interval
   checkAndNotify();
   setInterval(checkAndNotify, intervalMs);
 }
